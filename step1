@@ -1,0 +1,113 @@
+import os
+import hashlib
+import filecmp
+from send2trash import send2trash
+import tkinter
+from tkinter import messagebox, filedialog, Button
+from PIL import Image, ImageTk
+import webbrowser
+
+
+def get_file_icon(file_path):
+    # Liste des extensions de fichiers image courantes
+    image_extensions = ['.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tif', '.tiff']
+
+    # Vérifiez si le fichier est une image en comparant son extension aux extensions de la liste
+    if os.path.splitext(file_path)[1].lower() in image_extensions:
+        # Si c'est une image, ouvrez l'image et retournez-la
+        return Image.open(file_path)
+    elif os.path.splitext(file_path)[1].lower() == '.pdf':
+        # Si c'est un PDF, ouvrez-le avec le programme par défaut
+        webbrowser.open(file_path)
+        return None
+    else:
+        # Si ce n'est pas une image ou un PDF, retournez None
+        return None
+
+
+def find_duplicates(parent_folder):
+    # Dictionnaire pour stocker les fichiers en double
+    duplicates = {}
+    for dirName, subdirs, fileList in os.walk(parent_folder):
+        for filename in fileList:
+            # Chemin complet du fichier
+            path = os.path.join(dirName, filename)
+            # Calculer le hash
+            file_hash = hash_file(path)
+            # Ajouter ou ajouter un fichier au dictionnaire
+            if file_hash in duplicates:
+                duplicates[file_hash].append(path)
+            else:
+                duplicates[file_hash] = [path]
+    # Supprimer les entrées du dictionnaire qui ont un seul fichier
+    duplicates = {key: val for key, val in duplicates.items() if len(val) > 1}
+    return duplicates
+
+
+def hash_file(path, blocksize=65536):
+    file = open(path, 'rb')
+    hasher = hashlib.md5()
+    buf = file.read(blocksize)
+    while len(buf) > 0:
+        hasher.update(buf)
+        buf = file.read(blocksize)
+    file.close()
+    return hasher.hexdigest()
+
+
+def confirm_delete(original, duplicate):
+    confirm_window = tkinter.Toplevel()
+    confirm_window.title("Confirm delete")
+    confirm_window.geometry("300x200")
+
+    original_image = get_file_icon(original)
+    if original_image is not None:
+        original_image = ImageTk.PhotoImage(original_image.resize((100, 100)))
+        original_label = tkinter.Label(confirm_window, image=original_image)
+        original_label.image = original_image
+        original_label.pack(side='left')
+
+    duplicate_image = get_file_icon(duplicate)
+    if duplicate_image is not None:
+        duplicate_image = ImageTk.PhotoImage(duplicate_image.resize((100, 100)))
+        duplicate_label = tkinter.Label(confirm_window, image=duplicate_image)
+        duplicate_label.image = duplicate_image
+        duplicate_label.pack(side='right')
+
+    choice = messagebox.askyesno("Confirmation", f"Do you want to delete {duplicate}?")
+    if choice:
+        try:
+            # Normalize the file path before deleting
+            duplicate = os.path.normpath(duplicate)
+            send2trash(duplicate)
+            print(f'File {duplicate} moved to recycle bin successfully.')
+        except Exception as e:
+            print(f'Error when moving file {duplicate} to recycle bin. Reason: {str(e)}')
+
+    confirm_window.destroy()
+
+def exit_program():
+    exit()
+
+def main():
+    root = tkinter.Tk()
+    root.withdraw()
+    folder_selected = filedialog.askdirectory()
+    duplicates = find_duplicates(folder_selected)
+    if duplicates:  # s'il y a des doublons
+        for duplicate_list in duplicates.values():
+            if len(duplicate_list) > 1:
+                original = duplicate_list[0]
+                for duplicate in duplicate_list[1:]:
+                    confirm_delete(original, duplicate)
+    else:  # s'il n'y a pas de doublons
+        print("No duplicates found.")
+        root.quit()  # arrête la boucle principale, donc ferme le programme
+
+    # Add an exit button
+    exit_button = Button(root, text="Exit", command=root.quit)
+    exit_button.pack()
+    root.mainloop()
+
+if __name__ == "__main__":
+    main()
